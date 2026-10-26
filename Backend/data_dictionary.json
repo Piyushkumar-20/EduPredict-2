@@ -1,0 +1,96 @@
+{
+  "project": "EduPredict AI",
+  "dataset": "EduPredict_Synthetic_Benchmark_5000.csv",
+  "rows": 5000,
+  "synthetic": true,
+  "gpa_scale": "10-point",
+  "label_rule": "High Risk if synthetic academic-only rule; attendance excluded from classifier; else Safe",
+  "columns": [
+    {
+      "name": "student_id",
+      "type": "string",
+      "description": "Synthetic ID; not a real identifier."
+    },
+    {
+      "name": "age",
+      "type": "integer",
+      "description": "Synthetic age in years."
+    },
+    {
+      "name": "gender",
+      "type": "category",
+      "description": "Synthetic category; consider excluding from real risk decisions."
+    },
+    {
+      "name": "major",
+      "type": "category",
+      "description": "Synthetic programme."
+    },
+    {
+      "name": "GPA",
+      "type": "number 0-10",
+      "description": "Synthetic 10-point CGPA/GPA."
+    },
+    {
+      "name": "course_load",
+      "type": "integer",
+      "description": "Synthetic course count."
+    },
+    {
+      "name": "avg_course_grade",
+      "type": "number 0-100",
+      "description": "Synthetic average grade."
+    },
+    {
+      "name": "attendance_rate",
+      "type": "fraction 0-1",
+      "description": "0.84 means 84%."
+    },
+    {
+      "name": "enrollment_status",
+      "type": "category",
+      "description": "Synthetic enrollment category."
+    },
+    {
+      "name": "lms_logins_past_month",
+      "type": "integer",
+      "description": "Synthetic monthly LMS logins."
+    },
+    {
+      "name": "avg_session_duration_minutes",
+      "type": "number",
+      "description": "Synthetic average session duration."
+    },
+    {
+      "name": "assignment_submission_rate",
+      "type": "fraction 0-1",
+      "description": "0.8 means 80%."
+    },
+    {
+      "name": "forum_participation_count",
+      "type": "integer",
+      "description": "Synthetic count."
+    },
+    {
+      "name": "video_completion_rate",
+      "type": "fraction 0-1",
+      "description": "0.8 means 80%."
+    },
+    {
+      "name": "support_label",
+      "type": "category",
+      "description": "Synthetic rule-generated label."
+    },
+    {
+      "name": "label_source",
+      "type": "string",
+      "description": "synthetic_rule_generated"
+    },
+    {
+      "name": "risk_rule_version",
+      "type": "string",
+      "description": "Documents the synthetic label rule."
+    }
+  ],
+  "warning": "Synthetic data and labels are for development/demo only; not validated real-world outcomes."
+}

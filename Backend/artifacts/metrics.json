@@ -1,0 +1,94 @@
+{
+  "dataset_rows": 5000,
+  "train_rows": 4000,
+  "test_rows": 1000,
+  "class_counts": {
+    "Safe": 3960,
+    "High Risk": 1040
+  },
+  "candidate_models": [
+    {
+      "model": "logistic_regression",
+      "accuracy": 0.975,
+      "macro_precision": 0.9484846425274271,
+      "macro_recall": 0.9806721056721057,
+      "macro_f1": 0.963398440187927,
+      "roc_auc_high_risk": 0.997772193084693
+    },
+    {
+      "model": "decision_tree",
+      "accuracy": 1.0,
+      "macro_precision": 1.0,
+      "macro_recall": 1.0,
+      "macro_f1": 1.0,
+      "roc_auc_high_risk": 1.0
+    },
+    {
+      "model": "random_forest",
+      "accuracy": 0.997,
+      "macro_precision": 0.9928909952606635,
+      "macro_recall": 0.9981060606060606,
+      "macro_f1": 0.9954712811292813,
+      "roc_auc_high_risk": 0.999981789044289
+    }
+  ],
+  "selected_model": "decision_tree",
+  "classification_report": {
+    "High Risk": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 208.0
+    },
+    "Safe": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 792.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1000.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1000.0
+    }
+  },
+  "confusion_matrix_labels_order": [
+    "High Risk",
+    "Safe"
+  ],
+  "confusion_matrix": [
+    [
+      208,
+      0
+    ],
+    [
+      0,
+      792
+    ]
+  ],
+  "features": [
+    "age",
+    "gender",
+    "major",
+    "GPA",
+    "course_load",
+    "avg_course_grade",
+    "enrollment_status",
+    "lms_logins_past_month",
+    "avg_session_duration_minutes",
+    "assignment_submission_rate",
+    "forum_participation_count",
+    "video_completion_rate"
+  ],
+  "label_rule": "Synthetic academic-only rule: very low GPA or combinations of low GPA, course grade, assignment submission and engagement; attendance is excluded from the classifier and handled by a separate alert.",
+  "label_provenance": "synthetic_academic_rule_generated",
+  "interpretation": "Metrics evaluate agreement with a synthetic rule-generated label, not real-world student outcomes."
+}

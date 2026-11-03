@@ -21,7 +21,6 @@ app = FastAPI(title="EduPredict AI API", version="2.0.0",
 
 FRONTEND_PORT = os.getenv("FRONTEND_PORT", "5173")
 
-# Permit the local Vite development server to call this API from the browser.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -31,7 +30,7 @@ app.add_middleware(
         "http://127.0.0.1:4173",
     ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
@@ -88,6 +87,45 @@ def init_db():
           KEY idx_recommendations_student_created (student_id, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS academic_years (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(40) NOT NULL UNIQUE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS semesters (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          academic_year_id BIGINT NOT NULL,
+          name VARCHAR(40) NOT NULL,
+          semester_number TINYINT NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_semester_year_number (academic_year_id, semester_number),
+          CONSTRAINT fk_semester_year FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS sections (
+          id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          semester_id BIGINT NOT NULL,
+          name VARCHAR(40) NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_section_semester_name (semester_id, name),
+          CONSTRAINT fk_section_semester FOREIGN KEY (semester_id) REFERENCES semesters(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        # Backward-compatible migration for databases created by earlier EduPredict versions.
+        for column, definition in [
+            ("academic_year", "VARCHAR(40) NULL"),
+            ("semester", "TINYINT NULL"),
+            ("section", "VARCHAR(40) NULL"),
+        ]:
+            try:
+                cur.execute(f"ALTER TABLE students ADD COLUMN {column} {definition}")
+            except MySQLError as migration_error:
+                if getattr(migration_error, "errno", None) != 1060:
+                    raise
         conn.commit()
         cur.close()
     finally:
@@ -100,13 +138,13 @@ def save_students(records):
     try:
         cur = conn.cursor()
         sql = """INSERT INTO students
-        (student_id,name,major,age,gender,gpa,attendance_rate,avg_course_grade,assignment_submission_rate,video_completion_rate,lms_logins_past_month,enrollment_status,prediction,high_risk_probability,safe_probability,attendance_alert,source)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'import')
-        ON DUPLICATE KEY UPDATE name=VALUES(name),major=VALUES(major),age=VALUES(age),gender=VALUES(gender),gpa=VALUES(gpa),attendance_rate=VALUES(attendance_rate),avg_course_grade=VALUES(avg_course_grade),assignment_submission_rate=VALUES(assignment_submission_rate),video_completion_rate=VALUES(video_completion_rate),lms_logins_past_month=VALUES(lms_logins_past_month),enrollment_status=VALUES(enrollment_status),prediction=VALUES(prediction),high_risk_probability=VALUES(high_risk_probability),safe_probability=VALUES(safe_probability),attendance_alert=VALUES(attendance_alert),source='import'"""
+        (student_id,name,major,age,gender,gpa,attendance_rate,avg_course_grade,assignment_submission_rate,video_completion_rate,lms_logins_past_month,enrollment_status,prediction,high_risk_probability,safe_probability,attendance_alert,academic_year,semester,section,source)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'import')
+        ON DUPLICATE KEY UPDATE name=VALUES(name),major=VALUES(major),age=VALUES(age),gender=VALUES(gender),gpa=VALUES(gpa),attendance_rate=VALUES(attendance_rate),avg_course_grade=VALUES(avg_course_grade),assignment_submission_rate=VALUES(assignment_submission_rate),video_completion_rate=VALUES(video_completion_rate),lms_logins_past_month=VALUES(lms_logins_past_month),enrollment_status=VALUES(enrollment_status),prediction=VALUES(prediction),high_risk_probability=VALUES(high_risk_probability),safe_probability=VALUES(safe_probability),attendance_alert=VALUES(attendance_alert),academic_year=VALUES(academic_year),semester=VALUES(semester),section=VALUES(section),source='import'"""
         values=[]
         for r in records:
             probs=r.get("class_probabilities") or {}
-            values.append((str(r.get("student_id") or "").strip(),str(r.get("name") or r.get("student_id") or "Imported student")[:200],r.get("major"),r.get("age"),r.get("gender"),r.get("GPA",r.get("gpa",0)),r.get("attendance_rate",0),r.get("avg_course_grade"),r.get("assignment_submission_rate"),r.get("video_completion_rate"),r.get("lms_logins_past_month"),r.get("enrollment_status","Active"),r.get("prediction"),probs.get("High Risk"),probs.get("Safe"),bool(r.get("attendance_alert"))))
+            values.append((str(r.get("student_id") or "").strip(),str(r.get("name") or r.get("student_id") or "Imported student")[:200],r.get("major"),r.get("age"),r.get("gender"),r.get("GPA",r.get("gpa",0)),r.get("attendance_rate",0),r.get("avg_course_grade"),r.get("assignment_submission_rate"),r.get("video_completion_rate"),r.get("lms_logins_past_month"),r.get("enrollment_status","Active"),r.get("prediction"),probs.get("High Risk"),probs.get("Safe"),bool(r.get("attendance_alert")),r.get("academic_year"),r.get("semester"),r.get("section")))
         if any(not v[0] for v in values):
             raise HTTPException(422,"Every saved student must have a non-empty student_id.")
         cur.executemany(sql,values); conn.commit(); cur.close(); return len(values)
@@ -118,6 +156,7 @@ def save_students(records):
 class StudentRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
     student_id: str | None = None
+    name: str | None = Field(default=None, max_length=200)
     age: float | None = Field(default=None, ge=0, le=120)
     gender: str | None = None
     major: str | None = None
@@ -131,6 +170,10 @@ class StudentRecord(BaseModel):
     assignment_submission_rate: float | None = Field(default=None, ge=0, le=1)
     forum_participation_count: float | None = Field(default=None, ge=0)
     video_completion_rate: float | None = Field(default=None, ge=0, le=1)
+    # Academic grouping is metadata for organization/filtering, never an ML feature.
+    academic_year: str | None = Field(default=None, max_length=100)
+    semester: int | None = Field(default=None, ge=1, le=12)
+    section: str | None = Field(default=None, max_length=50)
 
     @model_validator(mode="before")
     @classmethod
@@ -170,7 +213,7 @@ def get_students():
         conn=db_connect()
         try:
             cur=conn.cursor(dictionary=True)
-            cur.execute("SELECT student_id,name,major,age,gender,gpa AS GPA,attendance_rate,avg_course_grade,assignment_submission_rate,video_completion_rate,lms_logins_past_month,enrollment_status,prediction,high_risk_probability,safe_probability,attendance_alert,source FROM students ORDER BY updated_at DESC")
+            cur.execute("SELECT student_id,name,major,age,gender,gpa AS GPA,attendance_rate,avg_course_grade,assignment_submission_rate,video_completion_rate,lms_logins_past_month,enrollment_status,prediction,high_risk_probability,safe_probability,attendance_alert,source,academic_year,semester,section FROM students ORDER BY updated_at DESC")
             rows=cur.fetchall(); cur.close()
         finally: conn.close()
         for r in rows:
@@ -191,6 +234,135 @@ def bulk_save_students(payload: list[dict]):
     except MySQLError as exc:
         raise HTTPException(503, f"Could not save student records to MySQL: {exc}")
 
+
+
+@app.get("/academic-structure")
+def get_academic_structure():
+    try:
+        conn = db_connect()
+        try:
+            cur = conn.cursor(dictionary=True)
+            cur.execute("""SELECT ay.id AS academic_year_id, ay.name AS academic_year,
+                sm.id AS semester_id, sm.name AS semester_name, sm.semester_number,
+                sc.id AS section_id, sc.name AS section_name
+                FROM academic_years ay
+                LEFT JOIN semesters sm ON sm.academic_year_id=ay.id
+                LEFT JOIN sections sc ON sc.semester_id=sm.id
+                ORDER BY ay.name DESC, sm.semester_number DESC, sc.name""")
+            rows = cur.fetchall()
+            cur.close()
+        finally:
+            conn.close()
+        years = {}
+        for row in rows:
+            yid = row["academic_year_id"]
+            year = years.setdefault(yid, {"id": yid, "name": row["academic_year"], "semesters": {}})
+            if row["semester_id"] is not None:
+                sid = row["semester_id"]
+                sem = year["semesters"].setdefault(sid, {"id": sid, "name": row["semester_name"], "number": row["semester_number"], "sections": []})
+                if row["section_id"] is not None:
+                    sem["sections"].append({"id": row["section_id"], "name": row["section_name"]})
+        return {"academic_years": [{"id": y["id"], "name": y["name"], "semesters": list(y["semesters"].values())} for y in years.values()]}
+    except MySQLError as exc:
+        raise HTTPException(503, f"MySQL unavailable: {exc}")
+
+
+class AcademicStructureCreate(BaseModel):
+    type: str
+    name: str = Field(min_length=1, max_length=40)
+    academic_year_id: int | None = None
+    semester_id: int | None = None
+    semester_number: int | None = Field(default=None, ge=1, le=12)
+
+
+@app.post("/academic-structure")
+def create_academic_structure(payload: AcademicStructureCreate):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(422, "Name cannot be empty.")
+    conn = db_connect()
+    try:
+        cur = conn.cursor()
+        if payload.type == "academic_year":
+            cur.execute("INSERT INTO academic_years (name) VALUES (%s)", (name,))
+        elif payload.type == "semester":
+            if not payload.academic_year_id or not payload.semester_number:
+                raise HTTPException(422, "Select an academic year and semester number.")
+            cur.execute("INSERT INTO semesters (academic_year_id,name,semester_number) VALUES (%s,%s,%s)", (payload.academic_year_id, name, payload.semester_number))
+        elif payload.type == "section":
+            if not payload.semester_id:
+                raise HTTPException(422, "Select a semester.")
+            cur.execute("INSERT INTO sections (semester_id,name) VALUES (%s,%s)", (payload.semester_id, name))
+        else:
+            raise HTTPException(422, "type must be academic_year, semester, or section.")
+        conn.commit()
+        return {"id": cur.lastrowid, "message": f"{payload.type.replace('_', ' ').title()} created."}
+    except MySQLError as exc:
+        conn.rollback()
+        if getattr(exc, "errno", None) == 1062:
+            raise HTTPException(409, "This academic item already exists.")
+        raise HTTPException(503, f"Could not save academic structure: {exc}")
+    finally:
+        conn.close()
+
+
+@app.delete("/academic-structure/{item_type}/{item_id}")
+def delete_academic_structure(item_type: str, item_id: int):
+    tables = {"academic_year": "academic_years", "semester": "semesters", "section": "sections"}
+    if item_type not in tables:
+        raise HTTPException(422, "Unsupported academic item type.")
+    conn = db_connect()
+    try:
+        cur = conn.cursor(dictionary=True)
+        if item_type == "academic_year":
+            cur.execute("SELECT name FROM academic_years WHERE id=%s", (item_id,))
+            item = cur.fetchone()
+            if not item:
+                raise HTTPException(404, "Academic year not found.")
+            cur.execute("SELECT COUNT(*) AS total FROM semesters WHERE academic_year_id=%s", (item_id,))
+            if cur.fetchone()["total"]:
+                raise HTTPException(409, "Delete all semesters and their sections before deleting this academic year.")
+            cur.execute("SELECT COUNT(*) AS total FROM students WHERE academic_year=%s", (item["name"],))
+            if cur.fetchone()["total"]:
+                raise HTTPException(409, "This academic year has student records. Reassign or remove those students before deleting it.")
+        elif item_type == "semester":
+            cur.execute("""SELECT sm.name, sm.semester_number, ay.name AS academic_year
+                FROM semesters sm JOIN academic_years ay ON ay.id=sm.academic_year_id
+                WHERE sm.id=%s""", (item_id,))
+            item = cur.fetchone()
+            if not item:
+                raise HTTPException(404, "Semester not found.")
+            cur.execute("SELECT COUNT(*) AS total FROM sections WHERE semester_id=%s", (item_id,))
+            if cur.fetchone()["total"]:
+                raise HTTPException(409, "Delete all sections before deleting this semester.")
+            cur.execute("SELECT COUNT(*) AS total FROM students WHERE academic_year=%s AND semester=%s",
+                        (item["academic_year"], item["semester_number"]))
+            if cur.fetchone()["total"]:
+                raise HTTPException(409, "This semester has student records. Reassign or remove those students before deleting it.")
+        else:
+            cur.execute("""SELECT sc.name, sm.semester_number, ay.name AS academic_year
+                FROM sections sc JOIN semesters sm ON sm.id=sc.semester_id
+                JOIN academic_years ay ON ay.id=sm.academic_year_id WHERE sc.id=%s""", (item_id,))
+            item = cur.fetchone()
+            if not item:
+                raise HTTPException(404, "Section not found.")
+            cur.execute("SELECT COUNT(*) AS total FROM students WHERE academic_year=%s AND semester=%s AND section=%s",
+                        (item["academic_year"], item["semester_number"], item["name"]))
+            if cur.fetchone()["total"]:
+                raise HTTPException(409, "This section has student records. Reassign or remove those students before deleting it.")
+        cur.execute(f"DELETE FROM {tables[item_type]} WHERE id=%s", (item_id,))
+        conn.commit()
+        return {"deleted": True}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except MySQLError as exc:
+        conn.rollback()
+        raise HTTPException(503, f"Could not delete academic item: {exc}")
+    finally:
+        conn.close()
+
+
 @app.get("/model-info")
 def model_info():
     if bundle is None:
@@ -202,12 +374,17 @@ def model_info():
 def predict_one(rec):
     raw = rec.model_dump()
     sid = raw.pop("student_id", None)
+    student_name = raw.pop("name", None)
+    # These fields are metadata, never features passed to the trained model.
+    raw.pop("academic_year", None)
+    raw.pop("semester", None)
+    raw.pop("section", None)
     raw["attendance_percent"] = round(raw["attendance_rate"]*100, 2)
     row = {c: raw.get(c, None) for c in bundle["feature_columns"]}
     X = pd.DataFrame([row], columns=bundle["feature_columns"])
     pred = str(bundle["pipeline"].predict(X)[0])
     probs = bundle["pipeline"].predict_proba(X)[0]
-    return {"student_id":sid, "prediction":pred,
+    return {"student_id":sid, "name":student_name, "prediction":pred,
             "class_probabilities":{str(c):round(float(p),4) for c,p in zip(bundle["pipeline"].classes_, probs)},
             "attendance_alert":raw["attendance_percent"] <= 65,
             "academic_standing": ("Needs review" if pred == "High Risk" else "No high academic risk flagged"),

@@ -122,3 +122,20 @@ After updating files, install frontend dependencies with `npm ci` from `Frontend
 
 ## Personalized AI plans
 Gemini generates a Recovery Plan for students classified High Risk and a Growth Plan for students classified Safe. Plans include evidence-linked actions, a 7-day schedule, measurable targets, teacher support, and follow-up measures. Attendance follow-up remains separate from academic classification.
+
+
+## Academic workspace (semester and section grouping)
+
+The API now supports a teacher-managed academic hierarchy: Academic Year / Batch → Semester → Section. Subject management is intentionally not included. Academic grouping is organizational metadata only; it is not sent to the Decision Tree model and does not affect the academic-risk prediction.
+
+On startup, the backend creates `academic_years`, `semesters`, and `sections` if missing, and adds nullable `academic_year`, `semester`, and `section` columns to an existing `students` table. This is a non-destructive migration: existing student records remain in place and appear under the unassigned / all-students view until assigned during a later CSV import.
+
+### Academic structure endpoints
+- `GET /academic-structure` — returns academic years with nested semesters and sections
+- `POST /academic-structure` — create an item using `type` (`academic_year`, `semester`, or `section`), `name`, and its parent ID; semesters also require `semester_number`
+- `DELETE /academic-structure/{item_type}/{item_id}` — delete a structure node (`academic_year`, `semester`, or `section`); child nodes cascade from their parent
+
+### CSV grouping
+The batch importer accepts optional `academic_year`, `semester`, and `section` columns (also `Academic Year`, `Semester`, and `Section`). If the file contains those values, row-level values are used. Otherwise, the frontend's selected default academic year, semester, and section are applied. Leave the fields blank to keep a record unassigned. Student IDs remain globally unique in the current student table; re-importing an existing ID updates that student's current academic grouping.
+
+After importing, use the academic tree in the sidebar or the directory filters to view a selected year, semester, or section. Dashboard metrics and risk charts use the selected academic scope. The model, its feature columns, the independent 65% attendance alert, and Gemini recommendation logic are unchanged.
